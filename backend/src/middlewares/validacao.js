@@ -90,3 +90,26 @@ export function validarCadastro(req, res, next) {
 
     next();
 }
+
+/**
+ * Valida os dados de categoria (nome e tipo).
+ * Na edição só o nome é usado, porque o tipo não pode mudar.
+ */
+export function validarCategoria(req, res, next) {
+  const { nome, tipo } = req.body ?? {};
+  const campos = {};
+
+  if (typeof nome !== 'string' || nome.trim().length < 2 || nome.trim().length > 60) {
+    campos.nome = 'O nome deve ter entre 2 e 60 caracteres.';
+  }
+
+  if (req.method === 'POST' && tipo !== 'entrada' && tipo !== 'saida') {
+    campos.tipo = 'O tipo deve ser "entrada" ou "saida".';
+  }
+
+  if (Object.keys(campos).length > 0) {
+    return res.status(400).json({ erro: 'Dados inválidos.', campos });
+  }
+
+  next();
+}
