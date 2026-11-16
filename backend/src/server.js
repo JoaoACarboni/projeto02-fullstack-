@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-
+import lancamentosRoutes from './routes/lancamentos.routes.js';
 import { pool } from './config/db.js';
 import { tratarErros } from './middlewares/erros.js';
 import authRoutes from './routes/auth.routes.js';
@@ -22,6 +22,8 @@ app.use(express.json());
 
 // Rotas de autenticação
 app.use('/api/auth', authRoutes);
+app.use('/api/fontes-destinos', fontesDestinosRoutes);
+app.use('/api/lancamentos', lancamentosRoutes);
 
 // Rota para verificar a conexão com o banco de dados
 app.get('/api/health', async (req, res, next) => {
@@ -45,5 +47,3 @@ app.use(tratarErros);
 app.listen(PORT, () => {
     console.log(`API em execução na porta ${PORT}`);
 });
-
-app.use('/api/fontes-destinos', fontesDestinosRoutes);
