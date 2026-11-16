@@ -5,6 +5,8 @@ import cors from 'cors';
 import { pool } from './config/db.js';
 import { tratarErros } from './middlewares/erros.js';
 import authRoutes from './routes/auth.routes.js';
+import fontesDestinosRoutes from './routes/fontesDestinos.routes.js';
+
 
 const app = express();
 
@@ -43,3 +45,5 @@ app.use(tratarErros);
 app.listen(PORT, () => {
     console.log(`API em execução na porta ${PORT}`);
 });
+
+app.use('/api/fontes-destinos', fontesDestinosRoutes);
