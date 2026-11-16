@@ -113,3 +113,44 @@ export function validarCategoria(req, res, next) {
 
   next();
 }
+
+// Dia do mês: número inteiro de 1 a 31
+function diaValido(dia) {
+  const n = Number(dia);
+  return Number.isInteger(n) && n >= 1 && n <= 31;
+}
+
+/**
+ * Valida os dados de fonte/destino.
+ * Se for cartão de crédito, exige fechamento, vencimento e limite.
+ */
+export function validarFonteDestino(req, res, next) {
+  const { nome, tipo, diaFechamento, diaVencimento, limite } = req.body ?? {};
+  const campos = {};
+
+  if (typeof nome !== 'string' || nome.trim().length < 2 || nome.trim().length > 60) {
+    campos.nome = 'O nome deve ter entre 2 e 60 caracteres.';
+  }
+
+  if (!['renda', 'conta', 'cartao_credito'].includes(tipo)) {
+    campos.tipo = 'O tipo deve ser "renda", "conta" ou "cartao_credito".';
+  }
+
+  if (tipo === 'cartao_credito') {
+    if (!diaValido(diaFechamento)) {
+      campos.diaFechamento = 'Informe o dia de fechamento (1 a 31).';
+    }
+    if (!diaValido(diaVencimento)) {
+      campos.diaVencimento = 'Informe o dia de vencimento (1 a 31).';
+    }
+    if (!(Number(limite) > 0)) {
+      campos.limite = 'Informe um limite maior que zero.';
+    }
+  }
+
+  if (Object.keys(campos).length > 0) {
+    return res.status(400).json({ erro: 'Dados inválidos.', campos });
+  }
+
+  next();
+}
