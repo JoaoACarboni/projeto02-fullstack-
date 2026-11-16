@@ -159,3 +159,63 @@ export function validarDadosFonteDestino(body, tipo) {
 
   return { campos, dados };
 }
+
+// ---------- Lançamentos ----------
+
+export function dataIsoValida(valor) {
+  if (typeof valor !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(valor)) return false;
+  const d = new Date(`${valor}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === valor;
+}
+
+export const idPositivo = (v) => /^\d+$/.test(String(v)) && Number(v) > 0;
+
+// Valida o corpo do POST e do PUT de lançamentos
+export function validarLancamento(req, res, next) {
+  const { tipo, descricao, valor, data, categoriaId, fonteDestinoId } = req.body ?? {};
+  const campos = {};
+
+  if (tipo !== 'entrada' && tipo !== 'saida') {
+    campos.tipo = 'O tipo deve ser "entrada" ou "saida".';
+  }
+  if (typeof descricao !== 'string' || descricao.trim().length < 1 || descricao.trim().length > 120) {
+    campos.descricao = 'A descrição deve ter entre 1 e 120 caracteres.';
+  }
+  // Regex em vez de float: aceita até 2 casas decimais, sem erro de arredondamento
+  if (!/^\d{1,10}(\.\d{1,2})?$/.test(String(valor ?? '')) || Number(valor) <= 0) {
+    campos.valor = 'O valor deve ser maior que zero, com até 2 casas decimais.';
+  }
+  if (!dataIsoValida(data)) {
+    campos.data = 'Informe uma data válida (AAAA-MM-DD).';
+  }
+  if (!idPositivo(categoriaId)) campos.categoriaId = 'Informe a categoria.';
+  if (!idPositivo(fonteDestinoId)) campos.fonteDestinoId = 'Informe a fonte/destino.';
+
+  if (Object.keys(campos).length > 0) {
+    return res.status(400).json({ erro: 'Dados inválidos.', campos });
+  }
+  next();
+}
+
+// Valida os filtros do GET /api/lancamentos
+export function validarFiltrosLancamentos(req, res, next) {
+  const { inicio, fim, tipo, categoriaId, fonteDestinoId, pagina } = req.query;
+  const campos = {};
+
+  if (inicio !== undefined && !dataIsoValida(inicio)) campos.inicio = 'Data inicial inválida.';
+  if (fim !== undefined && !dataIsoValida(fim)) campos.fim = 'Data final inválida.';
+  if (!campos.inicio && !campos.fim && inicio && fim && inicio > fim) {
+    campos.fim = 'A data final deve ser igual ou posterior à inicial.';
+  }
+  if (tipo !== undefined && tipo !== 'entrada' && tipo !== 'saida') {
+    campos.tipo = 'O tipo deve ser "entrada" ou "saida".';
+  }
+  if (categoriaId !== undefined && !idPositivo(categoriaId)) campos.categoriaId = 'Categoria inválida.';
+  if (fonteDestinoId !== undefined && !idPositivo(fonteDestinoId)) campos.fonteDestinoId = 'Fonte/destino inválida.';
+  if (pagina !== undefined && !idPositivo(pagina)) campos.pagina = 'Página inválida.';
+
+  if (Object.keys(campos).length > 0) {
+    return res.status(400).json({ erro: 'Filtros inválidos.', campos });
+  }
+  next();
+}
