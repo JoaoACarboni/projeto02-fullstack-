@@ -5,6 +5,8 @@ import cors from 'cors';
 import { pool } from './config/db.js';
 import { tratarErros } from './middlewares/erros.js';
 import authRoutes from './routes/auth.routes.js';
+import categoriasRoutes from './routes/categorias.routes.js';
+import fontesDestinosRoutes from './routes/fontesDestinos.routes.js';
 
 const app = express();
 
@@ -20,6 +22,12 @@ app.use(express.json());
 
 // Rotas de autenticação
 app.use('/api/auth', authRoutes);
+
+// Rotas de categorias
+app.use('/api/categorias', categoriasRoutes);
+
+// Rotas de fontes e destinos
+app.use('/api/fontes-destinos', fontesDestinosRoutes);
 
 // Rota para verificar a conexão com o banco de dados
 app.get('/api/health', async (req, res, next) => {
