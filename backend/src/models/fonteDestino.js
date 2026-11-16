@@ -1,33 +1,42 @@
 import { pool } from '../config/db.js';
 
-// As colunas do banco são snake_case; aqui devolvemos camelCase para o JSON
-const COLUNAS = `id, nome, tipo,
-  dia_fechamento AS "diaFechamento",
-  dia_vencimento AS "diaVencimento",
-  limite`;
+const COLUNAS = 'id, nome, tipo, dia_fechamento, dia_vencimento, limite';
 
-// O pg devolve NUMERIC como texto ("1500.00"), então convertemos para número
+// O driver devolve NUMERIC como texto ("1500.00"), então convertemos aqui
 function formatar(linha) {
-  if (linha && linha.limite !== null) {
-    linha.limite = Number(linha.limite);
-  }
-  return linha;
+  if (!linha) return null;
+  return {
+    id: linha.id,
+    nome: linha.nome,
+    tipo: linha.tipo,
+    diaFechamento: linha.dia_fechamento,
+    diaVencimento: linha.dia_vencimento,
+    limite: linha.limite === null ? null : Number(linha.limite),
+  };
 }
 
 export const FonteDestino = {
   async listar(usuarioId) {
     const { rows } = await pool.query(
       `SELECT ${COLUNAS} FROM fontes_destinos
-       WHERE usuario_id = $1 ORDER BY tipo, nome`,
+        WHERE usuario_id = $1
+        ORDER BY tipo, nome`,
       [usuarioId]
     );
     return rows.map(formatar);
   },
 
+  async buscar(id, usuarioId) {
+    const { rows } = await pool.query(
+      `SELECT ${COLUNAS} FROM fontes_destinos WHERE id = $1 AND usuario_id = $2`,
+      [id, usuarioId]
+    );
+    return formatar(rows[0]);
+  },
+
   async criar({ usuarioId, nome, tipo, diaFechamento, diaVencimento, limite }) {
     const { rows } = await pool.query(
-      `INSERT INTO fontes_destinos
-         (usuario_id, nome, tipo, dia_fechamento, dia_vencimento, limite)
+      `INSERT INTO fontes_destinos (usuario_id, nome, tipo, dia_fechamento, dia_vencimento, limite)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING ${COLUNAS}`,
       [usuarioId, nome, tipo, diaFechamento, diaVencimento, limite]
@@ -35,24 +44,22 @@ export const FonteDestino = {
     return formatar(rows[0]);
   },
 
-  // Só altera se for do usuário. Se não for, retorna undefined.
-  async atualizar({ id, usuarioId, nome, tipo, diaFechamento, diaVencimento, limite }) {
+  async atualizar({ id, usuarioId, nome, diaFechamento, diaVencimento, limite }) {
     const { rows } = await pool.query(
       `UPDATE fontes_destinos
-       SET nome = $1, tipo = $2, dia_fechamento = $3, dia_vencimento = $4, limite = $5
-       WHERE id = $6 AND usuario_id = $7
-       RETURNING ${COLUNAS}`,
-      [nome, tipo, diaFechamento, diaVencimento, limite, id, usuarioId]
+          SET nome = $3, dia_fechamento = $4, dia_vencimento = $5, limite = $6
+        WHERE id = $1 AND usuario_id = $2
+        RETURNING ${COLUNAS}`,
+      [id, usuarioId, nome, diaFechamento, diaVencimento, limite]
     );
     return formatar(rows[0]);
   },
 
-  // Retorna true se excluiu, false se não achou (ou é de outro usuário).
   async excluir(id, usuarioId) {
-    const { rowCount } = await pool.query(
+    const resultado = await pool.query(
       'DELETE FROM fontes_destinos WHERE id = $1 AND usuario_id = $2',
       [id, usuarioId]
     );
-    return rowCount > 0;
+    return resultado.rowCount > 0;
   },
 };

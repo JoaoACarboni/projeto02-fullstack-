@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-
+import lancamentosRoutes from './routes/lancamentos.routes.js';
 import { pool } from './config/db.js';
 import { tratarErros } from './middlewares/erros.js';
 import authRoutes from './routes/auth.routes.js';
@@ -51,3 +51,5 @@ app.use(tratarErros);
 app.listen(PORT, () => {
     console.log(`API em execução na porta ${PORT}`);
 });
+app.use('/api/fontes-destinos', fontesDestinosRoutes);
+app.use('/api/lancamentos', lancamentosRoutes);

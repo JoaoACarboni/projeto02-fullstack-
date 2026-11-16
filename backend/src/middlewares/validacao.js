@@ -154,3 +154,109 @@ export function validarFonteDestino(req, res, next) {
 
   next();
 }
+/**
+ * Valida os dados de uma fonte/destino.
+ * Retorna os erros por campo e os dados já normalizados.
+ * Se o tipo for cartão de crédito, fechamento, vencimento e limite são obrigatórios.
+ */
+export function validarDadosFonteDestino(body, tipo) {
+  const { nome, diaFechamento, diaVencimento, limite } = body ?? {};
+  const campos = {};
+  const dados = { nome: null, diaFechamento: null, diaVencimento: null, limite: null };
+
+  if (typeof nome !== 'string' || nome.trim().length < 2 || nome.trim().length > 60) {
+    campos.nome = 'O nome deve ter entre 2 e 60 caracteres.';
+  } else {
+    dados.nome = nome.trim();
+  }
+
+  if (!['renda', 'conta', 'cartao_credito'].includes(tipo)) {
+    campos.tipo = 'O tipo deve ser "renda", "conta" ou "cartao_credito".';
+  }
+
+  if (tipo === 'cartao_credito') {
+    const fechamento = Number(diaFechamento);
+    const vencimento = Number(diaVencimento);
+    const valorLimite = Number(limite);
+
+    if (!Number.isInteger(fechamento) || fechamento < 1 || fechamento > 31) {
+      campos.diaFechamento = 'O dia de fechamento deve ser de 1 a 31.';
+    } else {
+      dados.diaFechamento = fechamento;
+    }
+
+    if (!Number.isInteger(vencimento) || vencimento < 1 || vencimento > 31) {
+      campos.diaVencimento = 'O dia de vencimento deve ser de 1 a 31.';
+    } else {
+      dados.diaVencimento = vencimento;
+    }
+
+    if (!Number.isFinite(valorLimite) || valorLimite <= 0 || valorLimite > 9999999999.99) {
+      campos.limite = 'Informe um limite maior que zero.';
+    } else {
+      dados.limite = Math.round(valorLimite * 100) / 100;
+    }
+  }
+
+  return { campos, dados };
+}
+
+// ---------- Lançamentos ----------
+
+export function dataIsoValida(valor) {
+  if (typeof valor !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(valor)) return false;
+  const d = new Date(`${valor}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === valor;
+}
+
+export const idPositivo = (v) => /^\d+$/.test(String(v)) && Number(v) > 0;
+
+// Valida o corpo do POST e do PUT de lançamentos
+export function validarLancamento(req, res, next) {
+  const { tipo, descricao, valor, data, categoriaId, fonteDestinoId } = req.body ?? {};
+  const campos = {};
+
+  if (tipo !== 'entrada' && tipo !== 'saida') {
+    campos.tipo = 'O tipo deve ser "entrada" ou "saida".';
+  }
+  if (typeof descricao !== 'string' || descricao.trim().length < 1 || descricao.trim().length > 120) {
+    campos.descricao = 'A descrição deve ter entre 1 e 120 caracteres.';
+  }
+  // Regex em vez de float: aceita até 2 casas decimais, sem erro de arredondamento
+  if (!/^\d{1,10}(\.\d{1,2})?$/.test(String(valor ?? '')) || Number(valor) <= 0) {
+    campos.valor = 'O valor deve ser maior que zero, com até 2 casas decimais.';
+  }
+  if (!dataIsoValida(data)) {
+    campos.data = 'Informe uma data válida (AAAA-MM-DD).';
+  }
+  if (!idPositivo(categoriaId)) campos.categoriaId = 'Informe a categoria.';
+  if (!idPositivo(fonteDestinoId)) campos.fonteDestinoId = 'Informe a fonte/destino.';
+
+  if (Object.keys(campos).length > 0) {
+    return res.status(400).json({ erro: 'Dados inválidos.', campos });
+  }
+  next();
+}
+
+// Valida os filtros do GET /api/lancamentos
+export function validarFiltrosLancamentos(req, res, next) {
+  const { inicio, fim, tipo, categoriaId, fonteDestinoId, pagina } = req.query;
+  const campos = {};
+
+  if (inicio !== undefined && !dataIsoValida(inicio)) campos.inicio = 'Data inicial inválida.';
+  if (fim !== undefined && !dataIsoValida(fim)) campos.fim = 'Data final inválida.';
+  if (!campos.inicio && !campos.fim && inicio && fim && inicio > fim) {
+    campos.fim = 'A data final deve ser igual ou posterior à inicial.';
+  }
+  if (tipo !== undefined && tipo !== 'entrada' && tipo !== 'saida') {
+    campos.tipo = 'O tipo deve ser "entrada" ou "saida".';
+  }
+  if (categoriaId !== undefined && !idPositivo(categoriaId)) campos.categoriaId = 'Categoria inválida.';
+  if (fonteDestinoId !== undefined && !idPositivo(fonteDestinoId)) campos.fonteDestinoId = 'Fonte/destino inválida.';
+  if (pagina !== undefined && !idPositivo(pagina)) campos.pagina = 'Página inválida.';
+
+  if (Object.keys(campos).length > 0) {
+    return res.status(400).json({ erro: 'Filtros inválidos.', campos });
+  }
+  next();
+}
