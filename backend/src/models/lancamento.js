@@ -1,4 +1,5 @@
 import { pool } from '../config/db.js';
+import { randomUUID } from 'node:crypto';
 
 const POR_PAGINA = 10;
 
@@ -12,6 +13,11 @@ const SELECT = `
     FROM lancamentos l
     JOIN categorias c ON c.id = l.categoria_id
     JOIN fontes_destinos f ON f.id = l.fonte_destino_id`;
+
+// O pg devolve NUMERIC como texto; convertemos para número antes de enviar
+function formatar(lancamento) {
+  return lancamento && { ...lancamento, valor: Number(lancamento.valor) };
+}
 
 // Monta o WHERE com parâmetros ($1, $2...), nunca concatenando texto do usuário
 function montarFiltro(usuarioId, filtros) {
@@ -82,6 +88,42 @@ export const Lancamento = {
       [usuarioId, tipo, descricao, valor, data, categoriaId, fonteDestinoId]
     );
     return Lancamento.buscarPorId(rows[0].id, usuarioId);
+  },
+    // Cria uma compra parcelada: uma linha por parcela, todas ou nenhuma (transação)
+  async criarParcelado({ usuarioId, tipo, descricao, valor, data, categoriaId, fonteDestinoId, totalParcelas }) {
+    // Trabalhamos em centavos (números inteiros) para não ter erro de arredondamento
+    const totalCentavos = Math.round(valor * 100);
+    const base = Math.floor(totalCentavos / totalParcelas);
+    const sobra = totalCentavos - base * totalParcelas;   // a diferença vai para a 1ª parcela
+
+    const grupo = randomUUID();   // o mesmo código para todas as parcelas da compra
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      let primeiroId;
+      for (let parcela = 1; parcela <= totalParcelas; parcela++) {
+        const centavos = parcela === 1 ? base + sobra : base;
+        const { rows } = await client.query(
+          `INSERT INTO lancamentos
+             (usuario_id, tipo, descricao, valor, data, categoria_id, fonte_destino_id,
+              parcela_atual, total_parcelas, grupo_parcelamento)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+           RETURNING id`,
+          [usuarioId, tipo, descricao, centavos / 100, data, categoriaId, fonteDestinoId,
+           parcela, totalParcelas, grupo]
+        );
+        if (parcela === 1) primeiroId = rows[0].id;
+      }
+
+      await client.query('COMMIT');
+      return Lancamento.buscarPorId(primeiroId, usuarioId);
+    } catch (erro) {
+      await client.query('ROLLBACK');
+      throw erro;
+    } finally {
+      client.release();
+    }
   },
 
   async atualizar({ id, usuarioId, tipo, descricao, valor, data, categoriaId, fonteDestinoId }) {
