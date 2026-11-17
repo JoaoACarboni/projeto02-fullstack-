@@ -8,7 +8,7 @@ Aplicação de controle financeiro pessoal composta por uma **API REST** em Node
 - Node.js + Express 5
 - PostgreSQL com o driver `pg` (pool de conexões)
 - `bcrypt` (hash + salt das senhas) e `jsonwebtoken` (JWT com validade de 1 hora)
-- `dotenv`, `cors` (restrito à origem do front-end) e `express-rate-limit` (na rota de login)
+- `dotenv`, `cors` (restrito à origem do front-end)
 
 **Front-end**
 - React 19 + Vite
@@ -132,7 +132,7 @@ Todas as rotas, exceto `/api/health`, `/api/auth/cadastro` e `/api/auth/login`, 
 |---|---|---|
 | GET | `/api/health` | Testa a conexão com o banco |
 | POST | `/api/auth/cadastro` | Cadastra o usuário e cria as categorias e fontes/destinos padrão (`201`; `400` dados inválidos; `409` e-mail ou CPF já cadastrado) |
-| POST | `/api/auth/login` | Autentica e devolve `{ token, usuario }` (`401` com mensagem genérica; limitado a 10 tentativas a cada 15 min) |
+| POST | `/api/auth/login` | Autentica e devolve `{ token, usuario }` (`401` com mensagem genérica) |
 | GET | `/api/auth/me` | Dados do usuário logado |
 | GET | `/api/categorias` | Lista as categorias do usuário |
 | POST | `/api/categorias` | Cria categoria `{ nome, tipo }` (`409` nome repetido para o mesmo tipo) |

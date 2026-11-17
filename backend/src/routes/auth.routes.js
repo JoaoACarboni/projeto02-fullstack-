@@ -1,18 +1,11 @@
 import { Router } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import rateLimit from 'express-rate-limit';
 import { Usuario } from '../models/usuario.js';
 import { validarCadastro } from '../middlewares/validacao.js';
 import { autenticar } from '../middlewares/autenticar.js';
 
 const router = Router();
-
-const limitarLogin = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 10,
-  message: { erro: 'Muitas tentativas. Tente novamente em alguns minutos.' },
-});
 
 router.post('/cadastro', validarCadastro, async (req, res, next) => {
   const { nome, email, cpf, senha } = req.body;
@@ -37,7 +30,7 @@ router.post('/cadastro', validarCadastro, async (req, res, next) => {
   }
 });
 
-router.post('/login', limitarLogin, async (req, res, next) => {
+router.post('/login', async (req, res, next) => {
   try {
     const { email, senha } = req.body ?? {};
     if (typeof email !== 'string' || typeof senha !== 'string' || !email || !senha) {
