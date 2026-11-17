@@ -8,25 +8,30 @@ const links = [
   ['/fontes-destinos', 'Fontes/Destinos'],
   ['/relatorios', 'Relatórios'],
   ['/faturas', 'Faturas'],
+  ['/saude-financeira', 'Saúde financeira'],
 ];
 
 export default function Layout() {
   const { usuario, logout } = useAuth();
   return (
     <>
-      <header style={{ display: 'flex', gap: 16, alignItems: 'center', padding: '12px 24px', borderBottom: '1px solid #ddd' }}>
-        <strong>Finanças</strong>
-        <nav style={{ display: 'flex', gap: 12, flex: 1 }}>
+      <header className="topo">
+        <strong className="marca">Finanças</strong>
+        <nav>
           {links.map(([to, texto]) => (
-            <NavLink key={to} to={to} style={({ isActive }) => ({ fontWeight: isActive ? 'bold' : 'normal' })}>
+            <NavLink key={to} to={to}>
               {texto}
             </NavLink>
           ))}
         </nav>
-        <span>{usuario?.nome}</span>
-        <button onClick={logout}>Sair</button>
+        <div className="usuario">
+          <span>{usuario?.nome}</span>
+          <button className="secundario" onClick={logout}>
+            Sair
+          </button>
+        </div>
       </header>
-      <main style={{ padding: 24 }}>
+      <main className="conteudo">
         <Outlet />
       </main>
     </>

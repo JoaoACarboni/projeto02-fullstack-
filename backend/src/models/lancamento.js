@@ -9,7 +9,9 @@ const SELECT = `
          to_char(l.data, 'YYYY-MM-DD') AS data,
          l.categoria_id AS "categoriaId", c.nome AS categoria,
          l.fonte_destino_id AS "fonteDestinoId", f.nome AS "fonteDestino",
-         l.parcela_atual AS "parcelaAtual", l.total_parcelas AS "totalParcelas"
+         f.tipo AS "tipoFonteDestino",
+         l.parcela_atual AS "parcelaAtual", l.total_parcelas AS "totalParcelas",
+         l.grupo_parcelamento AS "grupoParcelamento"
     FROM lancamentos l
     JOIN categorias c ON c.id = l.categoria_id
     JOIN fontes_destinos f ON f.id = l.fonte_destino_id`;
@@ -17,6 +19,26 @@ const SELECT = `
 // O pg devolve NUMERIC como texto; convertemos para número antes de enviar
 function formatar(lancamento) {
   return lancamento && { ...lancamento, valor: Number(lancamento.valor) };
+}
+
+// '100.5' -> 10050. Converte o texto direto, sem passar por float.
+function paraCentavos(valor) {
+  const [reais, centavos = ''] = String(valor).split('.');
+  return Number(reais) * 100 + Number(centavos.padEnd(2, '0'));
+}
+
+// 3334 -> '33.34' (texto, gravado no NUMERIC sem erro de arredondamento)
+function deCentavos(centavos) {
+  return `${Math.floor(centavos / 100)}.${String(centavos % 100).padStart(2, '0')}`;
+}
+
+// Divide o valor em N parcelas, em centavos. A sobra do arredondamento vai para a 1ª.
+// Ex.: '100.00' em 3x -> ['33.34', '33.33', '33.33']
+export function dividirEmParcelas(valor, totalParcelas) {
+  const total = paraCentavos(valor);
+  const base = Math.floor(total / totalParcelas);
+  const sobra = total - base * totalParcelas;
+  return Array.from({ length: totalParcelas }, (_, i) => deCentavos(i === 0 ? base + sobra : base));
 }
 
 // Monta o WHERE com parâmetros ($1, $2...), nunca concatenando texto do usuário
@@ -63,24 +85,24 @@ export const Lancamento = {
     );
 
     return {
-      totais: { entradas, saidas, saldo },
+      totais: { entradas: Number(entradas), saidas: Number(saidas), saldo: Number(saldo) },
       paginacao: {
         pagina,
         porPagina: POR_PAGINA,
         total,
         totalPaginas: Math.max(1, Math.ceil(total / POR_PAGINA)),
       },
-      lancamentos: rows,
+      lancamentos: rows.map(formatar),
     };
   },
 
   async buscarPorId(id, usuarioId) {
     const { rows } = await pool.query(`${SELECT} WHERE l.id = $1 AND l.usuario_id = $2`, [id, usuarioId]);
-    return rows[0];
+    return formatar(rows[0]);
   },
 
   async criar({ usuarioId, tipo, descricao, valor, data, categoriaId, fonteDestinoId }) {
-    // parcela_atual e total_parcelas ficam com o DEFAULT 1 (parcelamento: veja o README)
+    // parcela_atual e total_parcelas ficam com o DEFAULT 1
     const { rows } = await pool.query(
       `INSERT INTO lancamentos (usuario_id, tipo, descricao, valor, data, categoria_id, fonte_destino_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -89,35 +111,34 @@ export const Lancamento = {
     );
     return Lancamento.buscarPorId(rows[0].id, usuarioId);
   },
-    // Cria uma compra parcelada: uma linha por parcela, todas ou nenhuma (transação)
-  async criarParcelado({ usuarioId, tipo, descricao, valor, data, categoriaId, fonteDestinoId, totalParcelas }) {
-    // Trabalhamos em centavos (números inteiros) para não ter erro de arredondamento
-    const totalCentavos = Math.round(valor * 100);
-    const base = Math.floor(totalCentavos / totalParcelas);
-    const sobra = totalCentavos - base * totalParcelas;   // a diferença vai para a 1ª parcela
 
-    const grupo = randomUUID();   // o mesmo código para todas as parcelas da compra
+  // Cria uma compra parcelada: uma linha por parcela, todas ou nenhuma (transação).
+  // Todas as parcelas guardam a data da compra; a fatura de cada uma é calculada
+  // com calcularFatura(data, cartao, parcela_atual) — veja models/fatura.js.
+  async criarParcelado({ usuarioId, tipo, descricao, valor, data, categoriaId, fonteDestinoId, totalParcelas }) {
+    const valores = dividirEmParcelas(valor, totalParcelas);
+    const grupo = randomUUID(); // o mesmo código para todas as parcelas da compra
+
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
 
-      let primeiroId;
+      const ids = [];
       for (let parcela = 1; parcela <= totalParcelas; parcela++) {
-        const centavos = parcela === 1 ? base + sobra : base;
         const { rows } = await client.query(
           `INSERT INTO lancamentos
              (usuario_id, tipo, descricao, valor, data, categoria_id, fonte_destino_id,
               parcela_atual, total_parcelas, grupo_parcelamento)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
            RETURNING id`,
-          [usuarioId, tipo, descricao, centavos / 100, data, categoriaId, fonteDestinoId,
+          [usuarioId, tipo, descricao, valores[parcela - 1], data, categoriaId, fonteDestinoId,
            parcela, totalParcelas, grupo]
         );
-        if (parcela === 1) primeiroId = rows[0].id;
+        ids.push(rows[0].id);
       }
 
       await client.query('COMMIT');
-      return Lancamento.buscarPorId(primeiroId, usuarioId);
+      return Lancamento.buscarPorId(ids[0], usuarioId);
     } catch (erro) {
       await client.query('ROLLBACK');
       throw erro;
@@ -139,12 +160,24 @@ export const Lancamento = {
     return Lancamento.buscarPorId(id, usuarioId);
   },
 
-  async excluir(id, usuarioId) {
+  // Exclui um lançamento. Com todas = true, se ele for uma parcela, exclui todas as
+  // parcelas da mesma compra. Retorna quantos foram excluídos (0 = não encontrado).
+  async excluir(id, usuarioId, todas = false) {
+    if (todas) {
+      const { rowCount } = await pool.query(
+        `DELETE FROM lancamentos
+          WHERE usuario_id = $2
+            AND (id = $1 OR grupo_parcelamento = (
+                  SELECT grupo_parcelamento FROM lancamentos WHERE id = $1 AND usuario_id = $2))`,
+        [id, usuarioId]
+      );
+      return rowCount;
+    }
     const { rowCount } = await pool.query(
       'DELETE FROM lancamentos WHERE id = $1 AND usuario_id = $2',
       [id, usuarioId]
     );
-    return rowCount > 0;
+    return rowCount;
   },
 
   // Usadas para garantir que categoria e fonte/destino pertencem ao usuário (RF3)
@@ -158,7 +191,7 @@ export const Lancamento = {
 
   async fonteDoUsuario(id, usuarioId) {
     const { rows } = await pool.query(
-      'SELECT id FROM fontes_destinos WHERE id = $1 AND usuario_id = $2',
+      'SELECT id, tipo FROM fontes_destinos WHERE id = $1 AND usuario_id = $2',
       [id, usuarioId]
     );
     return rows[0];

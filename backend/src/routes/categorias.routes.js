@@ -1,12 +1,18 @@
 import { Router } from 'express';
 import { Categoria } from '../models/categoria.js';
 import { autenticar } from '../middlewares/autenticar.js';
-import { validarCategoria } from '../middlewares/validacao.js';
+import { validarCategoria, idPositivo } from '../middlewares/validacao.js';
 
 const router = Router();
 
 // Todas as rotas deste arquivo exigem login
 router.use(autenticar);
+
+// id inválido na URL: o recurso "não existe"
+router.param('id', (req, res, next, id) => {
+  if (!idPositivo(id)) return res.status(404).json({ erro: 'Categoria não encontrada.' });
+  next();
+});
 
 router.get('/', async (req, res, next) => {
   try {

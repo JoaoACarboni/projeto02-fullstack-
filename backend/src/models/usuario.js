@@ -48,6 +48,11 @@ export const Usuario = {
     return rows[0];
   },
 
+  // Usado pelo seed para recriar os usuários de demonstração (ON DELETE CASCADE apaga o resto)
+  async excluirPorEmail(email) {
+    await pool.query('DELETE FROM usuarios WHERE email = $1', [email]);
+  },
+
   async buscarPorId(id) {
     const { rows } = await pool.query('SELECT id, nome, email FROM usuarios WHERE id = $1', [id]);
     return rows[0];

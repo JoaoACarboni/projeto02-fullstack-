@@ -1,4 +1,4 @@
-CREATE TABLE usuarios (
+CREATE TABLE IF NOT EXISTS usuarios (
   id          SERIAL PRIMARY KEY,
   nome        VARCHAR(120) NOT NULL,
   email       VARCHAR(160) NOT NULL UNIQUE,
@@ -7,7 +7,7 @@ CREATE TABLE usuarios (
   criado_em   TIMESTAMP    NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE categorias (
+CREATE TABLE IF NOT EXISTS categorias (
   id          SERIAL PRIMARY KEY,
   usuario_id  INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
   nome        VARCHAR(60) NOT NULL,
@@ -15,7 +15,7 @@ CREATE TABLE categorias (
   UNIQUE (usuario_id, nome, tipo)
 );
 
-CREATE TABLE fontes_destinos (
+CREATE TABLE IF NOT EXISTS fontes_destinos (
   id              SERIAL PRIMARY KEY,
   usuario_id      INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
   nome            VARCHAR(60) NOT NULL,
@@ -28,7 +28,7 @@ CREATE TABLE fontes_destinos (
          OR (dia_fechamento IS NOT NULL AND dia_vencimento IS NOT NULL AND limite IS NOT NULL))
 );
 
-CREATE TABLE lancamentos (
+CREATE TABLE IF NOT EXISTS lancamentos (
   id                  SERIAL PRIMARY KEY,
   usuario_id          INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
   tipo                VARCHAR(7)     NOT NULL CHECK (tipo IN ('entrada', 'saida')),
@@ -43,4 +43,4 @@ CREATE TABLE lancamentos (
   criado_em           TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_lancamentos_usuario_data ON lancamentos (usuario_id, data);
+CREATE INDEX IF NOT EXISTS idx_lancamentos_usuario_data ON lancamentos (usuario_id, data);

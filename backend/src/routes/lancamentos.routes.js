@@ -28,7 +28,7 @@ function mesCorrente() {
 }
 
 // Categoria e fonte/destino precisam ser do usuário; a categoria precisa ter o mesmo tipo do lançamento
-async function erroDeVinculo(usuarioId, { tipo, categoriaId, fonteDestinoId }) {
+async function erroDeVinculo(usuarioId, { tipo, categoriaId, fonteDestinoId, totalParcelas }) {
   const categoria = await Lancamento.categoriaDoUsuario(Number(categoriaId), usuarioId);
   if (!categoria) {
     return {
@@ -55,6 +55,16 @@ async function erroDeVinculo(usuarioId, { tipo, categoriaId, fonteDestinoId }) {
       corpo: {
         erro: 'Fonte/destino não encontrada.',
         campos: { fonteDestinoId: 'Fonte/destino não encontrada.' },
+      },
+    };
+  }
+  // Parcelamento só existe para compras (saídas) no cartão de crédito
+  if (Number(totalParcelas ?? 1) > 1 && (tipo !== 'saida' || fonte.tipo !== 'cartao_credito')) {
+    return {
+      status: 400,
+      corpo: {
+        erro: 'Dados inválidos.',
+        campos: { totalParcelas: 'Só é possível parcelar saídas em cartão de crédito.' },
       },
     };
   }
@@ -103,16 +113,23 @@ router.post('/', validarLancamento, async (req, res, next) => {
     const problema = await erroDeVinculo(req.usuarioId, req.body);
     if (problema) return res.status(problema.status).json(problema.corpo);
 
-    const lancamento = await Lancamento.criar({ usuarioId: req.usuarioId, ...dadosDoCorpo(req.body) });
+    const dados = { usuarioId: req.usuarioId, ...dadosDoCorpo(req.body) };
+    const totalParcelas = Number(req.body.totalParcelas ?? 1) || 1;
+
+    // Compra parcelada: gera um lançamento por parcela (em transação) e devolve a 1ª
+    const lancamento = totalParcelas > 1
+      ? await Lancamento.criarParcelado({ ...dados, totalParcelas })
+      : await Lancamento.criar(dados);
     res.status(201).json(lancamento);
   } catch (erro) {
     next(erro);
   }
 });
 
+// Edita um único lançamento (uma parcela, no caso de compras parceladas)
 router.put('/:id', validarLancamento, async (req, res, next) => {
   try {
-    const problema = await erroDeVinculo(req.usuarioId, req.body);
+    const problema = await erroDeVinculo(req.usuarioId, { ...req.body, totalParcelas: 1 });
     if (problema) return res.status(problema.status).json(problema.corpo);
 
     const lancamento = await Lancamento.atualizar({
@@ -127,10 +144,13 @@ router.put('/:id', validarLancamento, async (req, res, next) => {
   }
 });
 
+// DELETE /api/lancamentos/:id            -> exclui só este lançamento
+// DELETE /api/lancamentos/:id?todas=true -> exclui todas as parcelas da mesma compra
 router.delete('/:id', async (req, res, next) => {
   try {
-    const excluiu = await Lancamento.excluir(Number(req.params.id), req.usuarioId);
-    if (!excluiu) return res.status(404).json({ erro: 'Lançamento não encontrado.' });
+    const todas = req.query.todas === 'true';
+    const excluidos = await Lancamento.excluir(Number(req.params.id), req.usuarioId, todas);
+    if (excluidos === 0) return res.status(404).json({ erro: 'Lançamento não encontrado.' });
     res.status(204).send();
   } catch (erro) {
     next(erro);

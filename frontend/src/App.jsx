@@ -10,6 +10,7 @@ import Categorias from './components/Categorias';
 import FontesDestinos from './components/FontesDestinos';
 import Relatorios from './components/Relatorios';
 import Faturas from './components/Faturas';
+import SaudeFinanceira from './components/SaudeFinanceira';
 
 export default function App() {
   return (
@@ -32,6 +33,7 @@ export default function App() {
             <Route path="/fontes-destinos" element={<FontesDestinos />} />
             <Route path="/relatorios" element={<Relatorios />} />
             <Route path="/faturas" element={<Faturas />} />
+            <Route path="/saude-financeira" element={<SaudeFinanceira />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

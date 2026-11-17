@@ -1,55 +1,45 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import lancamentosRoutes from './routes/lancamentos.routes.js';
 import { pool } from './config/db.js';
-import { tratarErros } from './middlewares/erros.js';
+import { tratarErros, rotaNaoEncontrada } from './middlewares/erros.js';
 import authRoutes from './routes/auth.routes.js';
 import categoriasRoutes from './routes/categorias.routes.js';
 import fontesDestinosRoutes from './routes/fontesDestinos.routes.js';
+import lancamentosRoutes from './routes/lancamentos.routes.js';
+import relatoriosRoutes from './routes/relatorios.routes.js';
+import saudeFinanceiraRoutes from './routes/saudeFinanceira.routes.js';
 
 const app = express();
-
 const PORT = process.env.PORT || 3000;
 
-// Configuração do CORS
-app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173'
-}));
+// CORS restrito à origem do front-end
+app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173' }));
 
 // Permite receber dados em JSON
 app.use(express.json());
 
-// Rotas de autenticação
 app.use('/api/auth', authRoutes);
-
-// Rotas de categorias
 app.use('/api/categorias', categoriasRoutes);
-
-// Rotas de fontes e destinos
-app.use('/api/fontes-destinos', fontesDestinosRoutes);
-
-// Rota para verificar a conexão com o banco de dados
-app.get('/api/health', async (req, res, next) => {
-    try {
-        await pool.query('SELECT 1');
-
-        res.json({
-            status: 'ok',
-            message: 'API e banco de dados funcionando corretamente.'
-        });
-
-    } catch (erro) {
-        next(erro);
-    }
-});
-
-// Middleware global de tratamento de erros
-app.use(tratarErros);
-
-// Inicialização do servidor
-app.listen(PORT, () => {
-    console.log(`API em execução na porta ${PORT}`);
-});
 app.use('/api/fontes-destinos', fontesDestinosRoutes);
 app.use('/api/lancamentos', lancamentosRoutes);
+app.use('/api/relatorios', relatoriosRoutes);
+app.use('/api/saude-financeira', saudeFinanceiraRoutes);
+
+// Testa a conexão com o banco de dados
+app.get('/api/health', async (req, res, next) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({ status: 'ok', message: 'API e banco de dados funcionando corretamente.' });
+  } catch (erro) {
+    next(erro);
+  }
+});
+
+// Sempre depois de todas as rotas
+app.use(rotaNaoEncontrada);
+app.use(tratarErros);
+
+app.listen(PORT, () => {
+  console.log(`API em execução na porta ${PORT}`);
+});

@@ -40,7 +40,7 @@ router.post('/cadastro', validarCadastro, async (req, res, next) => {
 router.post('/login', limitarLogin, async (req, res, next) => {
   try {
     const { email, senha } = req.body ?? {};
-    if (!email || !senha) {
+    if (typeof email !== 'string' || typeof senha !== 'string' || !email || !senha) {
       return res.status(400).json({ erro: 'Informe e-mail e senha.' });
     }
 

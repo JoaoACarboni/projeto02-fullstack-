@@ -20,6 +20,9 @@ api.interceptors.response.use(
       localStorage.removeItem('token');
       localStorage.removeItem('usuario');
       window.location.href = '/login';
+      // Não repassa o erro: assim a tela não chega a mostrar "token inválido"
+      // enquanto o navegador vai para o login
+      return new Promise(() => {});
     }
     return Promise.reject(erro);
   }

@@ -57,35 +57,26 @@ function senhaValida(senha) {
  */
 export function validarCadastro(req, res, next) {
     const { nome, email, cpf, senha } = req.body ?? {};
+    const campos = {};
 
-    if (!nome || !email || !cpf || !senha) {
-        return res.status(400).json({
-            erro: 'Todos os campos são obrigatórios.'
-        });
+    if (typeof nome !== 'string' || nome.trim().length < 3 || nome.trim().length > 120) {
+        campos.nome = 'O nome deve ter entre 3 e 120 caracteres.';
     }
 
-    if (typeof nome !== 'string' || nome.trim().length < 3) {
-        return res.status(400).json({
-            erro: 'O nome deve possuir pelo menos 3 caracteres.'
-        });
+    if (!emailValido(email) || email.trim().length > 160) {
+        campos.email = 'Informe um e-mail válido.';
     }
 
-    if (!emailValido(email)) {
-        return res.status(400).json({
-            erro: 'Informe um e-mail válido.'
-        });
-    }
-
-    if (!cpfValido(cpf)) {
-        return res.status(400).json({
-            erro: 'Informe um CPF válido.'
-        });
+    if (typeof cpf !== 'string' || !cpfValido(cpf)) {
+        campos.cpf = 'Informe um CPF válido.';
     }
 
     if (!senhaValida(senha)) {
-        return res.status(400).json({
-            erro: 'A senha deve ter pelo menos 8 caracteres, incluindo letras e números.'
-        });
+        campos.senha = 'A senha deve ter pelo menos 8 caracteres, incluindo letras e números.';
+    }
+
+    if (Object.keys(campos).length > 0) {
+        return res.status(400).json({ erro: 'Dados inválidos.', campos });
     }
 
     next();
@@ -231,6 +222,15 @@ export function validarLancamento(req, res, next) {
   }
   if (!idPositivo(categoriaId)) campos.categoriaId = 'Informe a categoria.';
   if (!idPositivo(fonteDestinoId)) campos.fonteDestinoId = 'Informe a fonte/destino.';
+
+  // Parcelas: opcional (padrão 1), só na criação. A regra "só em cartão" fica na rota.
+  const { totalParcelas } = req.body ?? {};
+  if (req.method === 'POST' && totalParcelas !== undefined && totalParcelas !== null && totalParcelas !== '') {
+    const n = Number(totalParcelas);
+    if (!Number.isInteger(n) || n < 1 || n > 48) {
+      campos.totalParcelas = 'O número de parcelas deve ser de 1 a 48.';
+    }
+  }
 
   if (Object.keys(campos).length > 0) {
     return res.status(400).json({ erro: 'Dados inválidos.', campos });

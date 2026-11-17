@@ -1,20 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../services/api';
 import Campo from './Campo';
+import { reais, dataBR, isoDe, periodoDoMes } from './formatos';
 
-const reais = (v) =>
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v));
-const dataBR = (iso) => iso.split('-').reverse().join('/');
-const pad = (n) => String(n).padStart(2, '0');
-const isoDe = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-function mesCorrente() {
-  const h = new Date();
-  return {
-    inicio: isoDe(new Date(h.getFullYear(), h.getMonth(), 1)),
-    fim: isoDe(new Date(h.getFullYear(), h.getMonth() + 1, 0)),
-  };
-}
+const mesCorrente = () => periodoDoMes(0);
 
 const formVazio = () => ({
   tipo: 'saida',
@@ -23,20 +12,50 @@ const formVazio = () => ({
   data: isoDe(new Date()),
   categoriaId: '',
   fonteDestinoId: '',
+  totalParcelas: '1',
 });
 
 // Validação do cliente (complementar: a do servidor é a que vale)
-function validar(f) {
+function validar(f, podeParcelar) {
   const e = {};
   if (!f.descricao.trim()) e.descricao = 'Informe a descrição.';
   if (!(Number(f.valor) > 0)) e.valor = 'O valor deve ser maior que zero.';
+  else if (!/^\d+(\.\d{1,2})?$/.test(String(f.valor))) e.valor = 'Use no máximo 2 casas decimais.';
   if (!f.data) e.data = 'Informe a data.';
   if (!f.categoriaId) e.categoriaId = 'Escolha a categoria.';
   if (!f.fonteDestinoId) e.fonteDestinoId = 'Escolha a fonte/destino.';
+  if (podeParcelar) {
+    const n = Number(f.totalParcelas);
+    if (!Number.isInteger(n) || n < 1 || n > 48) e.totalParcelas = 'De 1 a 48 parcelas.';
+  }
   return e;
 }
 
 const estiloErro = { color: 'crimson', fontSize: 14 };
+
+// Pergunta se deve excluir só a parcela ou a compra inteira
+function DialogoExcluirParcela({ item, onEscolher }) {
+  return (
+    <div className="dialogo-fundo" role="dialog" aria-modal="true" aria-labelledby="titulo-excluir">
+      <div className="dialogo">
+        <h2 id="titulo-excluir">Excluir parcela</h2>
+        <p>
+          "{item.descricao}" é a parcela {item.parcelaAtual} de {item.totalParcelas} de uma compra parcelada. O que
+          deseja excluir?
+        </p>
+        <div className="acoes">
+          <button onClick={() => onEscolher('uma')}>Só esta parcela</button>
+          <button className="perigo" onClick={() => onEscolher('todas')}>
+            Todas as parcelas da compra
+          </button>
+          <button className="secundario" onClick={() => onEscolher(null)}>
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Lancamentos() {
   const [categorias, setCategorias] = useState([]);
@@ -59,6 +78,7 @@ export default function Lancamentos() {
   const [erros, setErros] = useState({});
   const [erroGeral, setErroGeral] = useState('');
   const [salvando, setSalvando] = useState(false);
+  const [parcelaParaExcluir, setParcelaParaExcluir] = useState(null);
 
   // Categorias e fontes/destinos para os selects
   useEffect(() => {
@@ -125,6 +145,7 @@ export default function Lancamentos() {
       data: item.data,
       categoriaId: String(item.categoriaId),
       fonteDestinoId: String(item.fonteDestinoId),
+      totalParcelas: '1',
     });
   }
 
@@ -133,18 +154,19 @@ export default function Lancamentos() {
     setErroGeral('');
     setErroAcao('');
 
-    const errosCliente = validar(form);
+    const errosCliente = validar(form, podeParcelar);
     setErros(errosCliente);
     if (Object.keys(errosCliente).length) return;
 
     const corpo = {
       tipo: form.tipo,
       descricao: form.descricao,
-      valor: form.valor,
+      valor: String(form.valor),
       data: form.data,
       categoriaId: Number(form.categoriaId),
       fonteDestinoId: Number(form.fonteDestinoId),
     };
+    if (podeParcelar) corpo.totalParcelas = Number(form.totalParcelas);
 
     setSalvando(true);
     try {
@@ -161,13 +183,12 @@ export default function Lancamentos() {
     }
   }
 
-  async function excluir(item) {
-    if (!window.confirm(`Excluir "${item.descricao}"?`)) return;
+  async function confirmarExclusao(item, todas) {
     setErroAcao('');
     try {
-      await api.delete(`/lancamentos/${item.id}`);
+      await api.delete(`/lancamentos/${item.id}`, { params: todas ? { todas: true } : {} });
       if (editandoId === item.id) cancelar();
-      // Se era o único item da página, volta uma página
+      // Se a página ficou vazia, volta uma página
       if (resultado.lancamentos.length === 1 && pagina > 1) setPagina((p) => p - 1);
       else await carregar();
     } catch (err) {
@@ -175,7 +196,35 @@ export default function Lancamentos() {
     }
   }
 
+  function excluir(item) {
+    // Parcela de compra parcelada: pergunta se exclui só ela ou todas
+    if (item.totalParcelas > 1) {
+      setParcelaParaExcluir(item);
+      return;
+    }
+    if (window.confirm(`Excluir "${item.descricao}"?`)) confirmarExclusao(item, false);
+  }
+
+  function escolherExclusao(opcao) {
+    const item = parcelaParaExcluir;
+    setParcelaParaExcluir(null);
+    if (opcao) confirmarExclusao(item, opcao === 'todas');
+  }
+
   const categoriasDoTipo = categorias.filter((c) => c.tipo === form.tipo);
+  const fonteEscolhida = fontes.find((f) => String(f.id) === String(form.fonteDestinoId));
+  // Parcelamento: só na criação de uma saída no cartão de crédito
+  const podeParcelar = !editandoId && form.tipo === 'saida' && fonteEscolhida?.tipo === 'cartao_credito';
+  const nParcelas = Number(form.totalParcelas);
+  const previaParcelas =
+    podeParcelar && nParcelas > 1 && nParcelas <= 48 && Number(form.valor) > 0
+      ? (() => {
+          // Mesma regra do servidor: divide em centavos e a sobra vai para a 1ª parcela
+          const total = Math.round(Number(form.valor) * 100);
+          const base = Math.floor(total / nParcelas);
+          return { primeira: (base + (total - base * nParcelas)) / 100, demais: base / 100 };
+        })()
+      : null;
   const lancamentos = resultado?.lancamentos ?? [];
   const totais = resultado?.totais;
   const paginacao = resultado?.paginacao;
@@ -245,6 +294,30 @@ export default function Lancamentos() {
           </select>
           {erros.fonteDestinoId && <span style={estiloErro}>{erros.fonteDestinoId}</span>}
         </label>
+
+        {podeParcelar && (
+          <label style={{ display: 'grid', gap: 4 }}>
+            Parcelas
+            <select value={form.totalParcelas} onChange={(e) => alterarForm('totalParcelas', e.target.value)}>
+              {Array.from({ length: 48 }, (_, i) => i + 1).map((n) => (
+                <option key={n} value={n}>
+                  {n === 1 ? 'À vista' : `${n}x`}
+                </option>
+              ))}
+            </select>
+            {previaParcelas && (
+              <small>
+                {previaParcelas.primeira === previaParcelas.demais
+                  ? `${nParcelas}x de ${reais(previaParcelas.demais)}`
+                  : `1x de ${reais(previaParcelas.primeira)} + ${nParcelas - 1}x de ${reais(previaParcelas.demais)}`}
+              </small>
+            )}
+            {erros.totalParcelas && <span style={estiloErro}>{erros.totalParcelas}</span>}
+          </label>
+        )}
+        {editandoId && form.tipo === 'saida' && fonteEscolhida?.tipo === 'cartao_credito' && (
+          <small>Na edição, apenas este lançamento (parcela) é alterado.</small>
+        )}
 
         {erroGeral && <p style={{ ...estiloErro, margin: 0 }}>{erroGeral}</p>}
 
@@ -342,7 +415,7 @@ export default function Lancamentos() {
                   <td style={{ padding: 8 }}>{dataBR(l.data)}</td>
                   <td style={{ padding: 8 }}>
                     {l.descricao}
-                    {l.totalParcelas > 1 && ` (${l.parcelaAtual}/${l.totalParcelas})`}
+                    {l.totalParcelas > 1 && ` — ${l.parcelaAtual}/${l.totalParcelas}`}
                   </td>
                   <td style={{ padding: 8 }}>{l.categoria}</td>
                   <td style={{ padding: 8 }}>{l.fonteDestino}</td>
@@ -377,6 +450,8 @@ export default function Lancamentos() {
           </div>
         </>
       )}
+
+      {parcelaParaExcluir && <DialogoExcluirParcela item={parcelaParaExcluir} onEscolher={escolherExclusao} />}
     </div>
   );
 }
