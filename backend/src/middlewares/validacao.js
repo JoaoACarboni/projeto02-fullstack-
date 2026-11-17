@@ -260,3 +260,38 @@ export function validarFiltrosLancamentos(req, res, next) {
   }
   next();
 }
+
+// Confere se o texto é uma data real no formato AAAA-MM-DD
+function dataValida(texto) {
+  if (typeof texto !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(texto)) {
+    return false;
+  }
+  const data = new Date(texto + 'T00:00:00Z');
+  // Se o dia não existe (ex.: 2026-02-31), o JS ajusta a data e o texto deixa de bater
+  return !Number.isNaN(data.getTime()) && data.toISOString().slice(0, 10) === texto;
+}
+
+/**
+ * Valida o período dos relatórios (?inicio=AAAA-MM-DD&fim=AAAA-MM-DD).
+ */
+export function validarPeriodo(req, res, next) {
+  const { inicio, fim } = req.query;
+  const campos = {};
+
+  if (!dataValida(inicio)) {
+    campos.inicio = 'Informe a data inicial no formato AAAA-MM-DD.';
+  }
+  if (!dataValida(fim)) {
+    campos.fim = 'Informe a data final no formato AAAA-MM-DD.';
+  }
+  // Datas nesse formato podem ser comparadas como texto
+  if (!campos.inicio && !campos.fim && inicio > fim) {
+    campos.fim = 'A data final deve ser igual ou posterior à data inicial.';
+  }
+
+  if (Object.keys(campos).length > 0) {
+    return res.status(400).json({ erro: 'Dados inválidos.', campos });
+  }
+
+  next();
+}
