@@ -295,3 +295,22 @@ export function validarPeriodo(req, res, next) {
 
   next();
 }
+
+/**
+ * Valida o parâmetro ?meses= das faturas (opcional, de 1 a 12; padrão 3).
+ */
+export function validarMeses(req, res, next) {
+  if (req.query.meses === undefined) {
+    return next();
+  }
+
+  const meses = Number(req.query.meses);
+  if (!Number.isInteger(meses) || meses < 1 || meses > 12) {
+    return res.status(400).json({
+      erro: 'Dados inválidos.',
+      campos: { meses: 'Informe um número inteiro de 1 a 12.' },
+    });
+  }
+
+  next();
+}
